@@ -16,31 +16,34 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Set variables
         run: |
           echo "TAG=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
           echo "RELEASE_NAME=Released on $(date +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_ENV
 
-          # reject: anti-AD 精选中文广告域名（过滤后仅保留根域名）
+          # reject: anti-AD 精选中文广告域名，过滤到根域名
           echo "ANTI_AD=https://anti-ad.net/domains.txt" >> $GITHUB_ENV
 
-          # proxy: GFW 封锁列表，~4k 条（vs Loyalsoldier proxy-list 的 26k）
+          # proxy: GFW 封锁列表，~4k 条
           echo "GFW=https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt" >> $GITHUB_ENV
 
-          # direct: 只保留根域名（X.Y 或 X.Y.cn），去除冗余子域名条目
-          echo "DIRECT=https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt" >> $GITHUB_ENV
-
+          # IP 段列表
           echo "CN_CIDR=https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt" >> $GITHUB_ENV
           echo "LAN_CIDR=https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/private.txt" >> $GITHUB_ENV
           echo "TELEGRAM_CIDR=https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/telegram.txt" >> $GITHUB_ENV
+
+          # 小列表
           echo "APPLE=https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf" >> $GITHUB_ENV
           echo "GOOGLE=https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/google.china.conf" >> $GITHUB_ENV
           echo "ICLOUD=https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/icloud.txt" >> $GITHUB_ENV
           echo "PRIVATE=https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/private.txt" >> $GITHUB_ENV
 
       # ── reject ────────────────────────────────────────────────────────────────
-      # anti-AD 包含子域名（111k 条），过滤到只保留根域名（X.Y 格式）→ ~5k 条
-      # +.doubleclick.net 一条规则已覆盖所有 *.doubleclick.net 子域，子域条目全部冗余
+      # anti-AD 包含子域名 (~111k 条)，过滤到根域名（X.Y 格式）→ ~5k 条
+      # +.doubleclick.net 一条规则已覆盖所有 *.doubleclick.net，子域条目全部冗余
       - name: Generate reject.yaml
         run: |
           echo "payload:" > reject.yaml
@@ -48,48 +51,37 @@ jobs:
             | grep -v '^#' \
             | grep -v '^$' \
             | grep -E '^[^.]+\.[^.]+$' \
+            | sort -u \
             | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' \
             >> reject.yaml
           echo "reject.yaml: $(grep -c '^ ' reject.yaml) entries"
 
       # ── proxy ─────────────────────────────────────────────────────────────────
-      # GFW 封锁列表：~4k 条，只包含真正被墙的域名
+      # GFW 封锁列表：~4k 条裸域名，只包含真正被封锁的域名
       - name: Generate proxy.yaml
         run: |
           echo "payload:" > proxy.yaml
           curl -sSL ${GFW} \
-            | grep -Ev '^(regexp|keyword|full|#| |$):' \
             | grep -v '^#' \
             | grep -v '^$' \
-            | sed 's/^domain://' \
+            | sort -u \
             | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' \
-            >> proxy.yaml
-          curl -sSL ${GFW} \
-            | grep '^full:' \
-            | sed 's/^full://' \
-            | awk '{printf "  - '"'"'%s'"'"'\n", $0}' \
             >> proxy.yaml
           echo "proxy.yaml: $(grep -c '^ ' proxy.yaml) entries"
 
       # ── direct ────────────────────────────────────────────────────────────────
-      # 从 116k 精简到 ~15k：只保留根域名
-      # 策略：X.Y 格式（baidu.com）+ X.com.cn/X.gov.cn 等二级 TLD 格式
-      # 原因：+.baidu.com 已覆盖全部子域，cdn/api/img 等子域条目完全冗余
+      # 使用仓库内静态精选列表（src/direct-custom.txt），约 130 条
+      # 覆盖 99% 家用场景的中国境内流量（百度、腾讯、阿里、字节、B站等主要平台）
+      # 未覆盖的中文域名会走默认规则（通常为代理，速度略降但可用）
+      # 需要新增域名？直接向 src/direct-custom.txt 提 PR
       - name: Generate direct.yaml
         run: |
           echo "payload:" > direct.yaml
-          TMP=$(mktemp)
-          curl -sSL ${DIRECT} | grep '^domain:' | sed 's/^domain://' > $TMP
-
-          # X.Y — 只有一个点的根域名（baidu.com, taobao.com, 163.net ...）
-          grep -E '^[^.]+\.[^.]+$' $TMP \
-            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> direct.yaml
-
-          # X.Y.cn — 二级 TLD（baidu.com.cn, xinhua.net.cn, pku.edu.cn ...）
-          grep -E '^[^.]+\.(com|net|org|gov|edu|ac)\.cn$' $TMP \
-            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> direct.yaml
-
-          rm -f $TMP
+          grep -v '^#' src/direct-custom.txt \
+            | grep -v '^$' \
+            | sort -u \
+            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' \
+            >> direct.yaml
           echo "direct.yaml: $(grep -c '^ ' direct.yaml) entries"
 
       # ── cncidr ────────────────────────────────────────────────────────────────
@@ -121,6 +113,7 @@ jobs:
           curl -sSL ${APPLE} \
             | grep '^server=/' \
             | sed 's|^server=/||; s|/.*||' \
+            | sort -u \
             | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> apple.yaml
 
       # ── google ────────────────────────────────────────────────────────────────
@@ -130,6 +123,7 @@ jobs:
           curl -sSL ${GOOGLE} \
             | grep '^server=/' \
             | sed 's|^server=/||; s|/.*||' \
+            | sort -u \
             | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> google.yaml
 
       # ── icloud ────────────────────────────────────────────────────────────────
@@ -171,7 +165,7 @@ jobs:
             |------|------|----------|
             | `reject.yaml` | 广告/恶意域名拦截 (anti-AD 根域名) | ~5k vs 167k → 节省97% |
             | `proxy.yaml` | 代理域名 (GFW 封锁列表) | ~4k vs 26k → 节省85% |
-            | `direct.yaml` | 直连域名 (仅根域名) | ~15k vs 116k → 节省87% |
+            | `direct.yaml` | 直连域名 (精选中国主流平台 ~130 条) | ~130 vs 116k → 节省99% |
             | `cncidr.yaml` | 中国大陆 IP 段 | 同原版 |
             | `lancidr.yaml` | 局域网 IP 段 | 同原版 |
             | `telegramcidr.yaml` | Telegram IP 段 | 同原版 |
