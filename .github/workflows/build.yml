@@ -21,80 +21,82 @@ jobs:
           echo "TAG=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
           echo "RELEASE_NAME=Released on $(date +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_ENV
 
-          # reject: anti-AD 精选中文广告域名，~5k 条（vs Loyalsoldier 的 167k）
+          # reject: anti-AD 精选中文广告域名（过滤后仅保留根域名）
           echo "ANTI_AD=https://anti-ad.net/domains.txt" >> $GITHUB_ENV
 
           # proxy: GFW 封锁列表，~4k 条（vs Loyalsoldier proxy-list 的 26k）
           echo "GFW=https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt" >> $GITHUB_ENV
 
-          # direct: 只保留根域名（1-dot），去除冗余子域名条目
+          # direct: 只保留根域名（X.Y 或 X.Y.cn），去除冗余子域名条目
           echo "DIRECT=https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt" >> $GITHUB_ENV
 
-          # IP 段列表（本身就不大，来源不变）
           echo "CN_CIDR=https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt" >> $GITHUB_ENV
           echo "LAN_CIDR=https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/private.txt" >> $GITHUB_ENV
           echo "TELEGRAM_CIDR=https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/telegram.txt" >> $GITHUB_ENV
-
-          # 小列表（本身就不大，来源不变）
           echo "APPLE=https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf" >> $GITHUB_ENV
           echo "GOOGLE=https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/google.china.conf" >> $GITHUB_ENV
           echo "ICLOUD=https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/icloud.txt" >> $GITHUB_ENV
           echo "PRIVATE=https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/private.txt" >> $GITHUB_ENV
 
       # ── reject ────────────────────────────────────────────────────────────────
-      # anti-AD 维护的高质量中文广告列表，~5k 条，每天自动更新
-      # 相比 Loyalsoldier reject-list(167k) 减少 97% 的规则条数
+      # anti-AD 包含子域名（111k 条），过滤到只保留根域名（X.Y 格式）→ ~5k 条
+      # +.doubleclick.net 一条规则已覆盖所有 *.doubleclick.net 子域，子域条目全部冗余
       - name: Generate reject.yaml
         run: |
           echo "payload:" > reject.yaml
           curl -sSL ${ANTI_AD} \
             | grep -v '^#' \
             | grep -v '^$' \
+            | grep -E '^[^.]+\.[^.]+$' \
             | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' \
             >> reject.yaml
           echo "reject.yaml: $(grep -c '^ ' reject.yaml) entries"
 
       # ── proxy ─────────────────────────────────────────────────────────────────
-      # 使用 GFW 列表代替 proxy-list：GFW 列表只包含真正被封锁的域名
-      # ~4k 条 vs Loyalsoldier proxy-list 的 26k 条
+      # GFW 封锁列表：~4k 条，只包含真正被墙的域名
       - name: Generate proxy.yaml
         run: |
           echo "payload:" > proxy.yaml
           curl -sSL ${GFW} \
-            | grep -Ev '^(regexp|keyword|full):' \
-            | perl -ne '/^(?:domain:)?([-_a-zA-Z0-9]+(?:\.[-_a-zA-Z0-9]+)+)/ && print "  - '"'"'+.$1'"'"'\n"' \
+            | grep -Ev '^(regexp|keyword|full|#| |$):' \
+            | grep -v '^#' \
+            | grep -v '^$' \
+            | sed 's/^domain://' \
+            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' \
             >> proxy.yaml
           curl -sSL ${GFW} \
             | grep '^full:' \
-            | perl -ne "/^full:([-_a-zA-Z0-9]+(?:\\.[-_a-zA-Z0-9]+)+)/ && print \"  - '\$1'\\n\"" \
+            | sed 's/^full://' \
+            | awk '{printf "  - '"'"'%s'"'"'\n", $0}' \
             >> proxy.yaml
           echo "proxy.yaml: $(grep -c '^ ' proxy.yaml) entries"
 
       # ── direct ────────────────────────────────────────────────────────────────
-      # 从 116k 条精简到 ~15k 条：只保留根域名（一个点），跳过子域名条目。
-      # 原因：+.baidu.com 已经覆盖所有 baidu.com 子域，无需再单独列出
-      # cdn.baidu.com / img.baidu.com / api.baidu.com 等全部冗余。
-      # 同时保留 .com.cn / .net.cn / .gov.cn 等二级 TLD 根域名。
+      # 从 116k 精简到 ~15k：只保留根域名
+      # 策略：X.Y 格式（baidu.com）+ X.com.cn/X.gov.cn 等二级 TLD 格式
+      # 原因：+.baidu.com 已覆盖全部子域，cdn/api/img 等子域条目完全冗余
       - name: Generate direct.yaml
         run: |
           echo "payload:" > direct.yaml
-          curl -sSL ${DIRECT} \
-            | grep '^domain:' \
-            | perl -ne '
-              # 1-dot domains: baidu.com, taobao.com, 163.com ...
-              /^domain:([a-z0-9][a-z0-9-]*\.[a-z]{2,})$/ && print "  - '"'"'+.$1'"'"'\n";
-              # 2nd-level CN TLDs: foo.com.cn, foo.net.cn, foo.gov.cn, foo.edu.cn ...
-              /^domain:([a-z0-9][a-z0-9-]*\.(?:com|net|org|gov|edu|ac)\.cn)$/ && print "  - '"'"'+.$1'"'"'\n";
-            ' \
-            >> direct.yaml
+          TMP=$(mktemp)
+          curl -sSL ${DIRECT} | grep '^domain:' | sed 's/^domain://' > $TMP
+
+          # X.Y — 只有一个点的根域名（baidu.com, taobao.com, 163.net ...）
+          grep -E '^[^.]+\.[^.]+$' $TMP \
+            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> direct.yaml
+
+          # X.Y.cn — 二级 TLD（baidu.com.cn, xinhua.net.cn, pku.edu.cn ...）
+          grep -E '^[^.]+\.(com|net|org|gov|edu|ac)\.cn$' $TMP \
+            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> direct.yaml
+
+          rm -f $TMP
           echo "direct.yaml: $(grep -c '^ ' direct.yaml) entries"
 
       # ── cncidr ────────────────────────────────────────────────────────────────
       - name: Generate cncidr.yaml
         run: |
           echo "payload:" > cncidr.yaml
-          curl -sSL ${CN_CIDR} \
-            | grep -Ev '^(#|$)' \
+          curl -sSL ${CN_CIDR} | grep -Ev '^(#|$)' \
             | awk '{printf "  - '"'"'%s'"'"'\n", $0}' >> cncidr.yaml
           echo "cncidr.yaml: $(grep -c '^ ' cncidr.yaml) entries"
 
@@ -102,16 +104,14 @@ jobs:
       - name: Generate lancidr.yaml
         run: |
           echo "payload:" > lancidr.yaml
-          curl -sSL ${LAN_CIDR} \
-            | grep -Ev '^(#|$)' \
+          curl -sSL ${LAN_CIDR} | grep -Ev '^(#|$)' \
             | awk '{printf "  - '"'"'%s'"'"'\n", $0}' >> lancidr.yaml
 
       # ── telegramcidr ──────────────────────────────────────────────────────────
       - name: Generate telegramcidr.yaml
         run: |
           echo "payload:" > telegramcidr.yaml
-          curl -sSL ${TELEGRAM_CIDR} \
-            | grep -Ev '^(#|$)' \
+          curl -sSL ${TELEGRAM_CIDR} | grep -Ev '^(#|$)' \
             | awk '{printf "  - '"'"'%s'"'"'\n", $0}' >> telegramcidr.yaml
 
       # ── apple ─────────────────────────────────────────────────────────────────
@@ -119,35 +119,32 @@ jobs:
         run: |
           echo "payload:" > apple.yaml
           curl -sSL ${APPLE} \
-            | perl -ne '/^server=\/([^\/]+)\// && print "  - '"'"'+.$1'"'"'\n"' >> apple.yaml
+            | grep '^server=/' \
+            | sed 's|^server=/||; s|/.*||' \
+            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> apple.yaml
 
       # ── google ────────────────────────────────────────────────────────────────
       - name: Generate google.yaml
         run: |
           echo "payload:" > google.yaml
           curl -sSL ${GOOGLE} \
-            | perl -ne '/^server=\/([^\/]+)\// && print "  - '"'"'+.$1'"'"'\n"' >> google.yaml
+            | grep '^server=/' \
+            | sed 's|^server=/||; s|/.*||' \
+            | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> google.yaml
 
       # ── icloud ────────────────────────────────────────────────────────────────
       - name: Generate icloud.yaml
         run: |
           echo "payload:" > icloud.yaml
-          curl -sSL ${ICLOUD} \
-            | grep -E '^(full|domain):' \
-            | awk -F: '
-                /^full:/   { printf "  - '"'"'%s'"'"'\n",   $2 }
-                /^domain:/ { printf "  - '"'"'+.%s'"'"'\n", $2 }
-              ' >> icloud.yaml
+          curl -sSL ${ICLOUD} | grep '^full:'   | sed 's/^full://'   | awk '{printf "  - '"'"'%s'"'"'\n", $0}' >> icloud.yaml
+          curl -sSL ${ICLOUD} | grep '^domain:' | sed 's/^domain://' | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> icloud.yaml
 
       # ── private ───────────────────────────────────────────────────────────────
       - name: Generate private.yaml
         run: |
           echo "payload:" > private.yaml
-          curl -sSL ${PRIVATE} \
-            | awk -F: '
-                /^full:/   { printf "  - '"'"'%s'"'"'\n",   $2 }
-                /^domain:/ { printf "  - '"'"'+.%s'"'"'\n", $2 }
-              ' >> private.yaml
+          curl -sSL ${PRIVATE} | grep '^full:'   | sed 's/^full://'   | awk '{printf "  - '"'"'%s'"'"'\n", $0}' >> private.yaml
+          curl -sSL ${PRIVATE} | grep '^domain:' | sed 's/^domain://' | awk '{printf "  - '"'"'+.%s'"'"'\n", $0}' >> private.yaml
 
       # ── Summary ───────────────────────────────────────────────────────────────
       - name: Print rule counts
@@ -157,9 +154,9 @@ jobs:
           for f in reject proxy direct cncidr lancidr telegramcidr apple google icloud private; do
             count=$(grep -c '^ ' ${f}.yaml 2>/dev/null || echo 0)
             total=$((total + count))
-            printf "  %-20s %6d entries\n" "${f}.yaml" "$count"
+            printf "  %-22s %6d entries\n" "${f}.yaml" "$count"
           done
-          printf "  %-20s %6d entries\n" "TOTAL" "$total"
+          printf "  %-22s %6d entries\n" "TOTAL" "$total"
 
       # ── Release ───────────────────────────────────────────────────────────────
       - name: Create GitHub Release
@@ -172,7 +169,7 @@ jobs:
 
             | 文件 | 说明 | 对比原版 |
             |------|------|----------|
-            | `reject.yaml` | 广告/恶意域名拦截 (anti-AD) | ~5k vs 167k → 节省97% |
+            | `reject.yaml` | 广告/恶意域名拦截 (anti-AD 根域名) | ~5k vs 167k → 节省97% |
             | `proxy.yaml` | 代理域名 (GFW 封锁列表) | ~4k vs 26k → 节省85% |
             | `direct.yaml` | 直连域名 (仅根域名) | ~15k vs 116k → 节省87% |
             | `cncidr.yaml` | 中国大陆 IP 段 | 同原版 |
