@@ -1,0 +1,187 @@
+# 精选中文平台直连域名列表
+# 格式：每行一个根域名，生成时自动加 +. 通配符覆盖全部子域
+# 目标：覆盖 99% 的家用路由器中国境内流量，条数从 116k → ~130 条
+
+# === 搜索 ===
+baidu.com
+baidu.cn
+so.com
+sogou.com
+
+# === 腾讯 / 微信 / QQ ===
+qq.com
+wechat.com
+tencent.com
+qcloud.com
+myqcloud.com
+gtimg.com
+qpic.cn
+tpic.cn
+weixin.qq.com
+
+# === 阿里巴巴生态 ===
+taobao.com
+tmall.com
+alibaba.com
+alipay.com
+aliyun.com
+alicdn.com
+alibabacloud.com
+amap.com
+ele.me
+hema.com
+aliimg.com
+tbcache.com
+aliapp.org
+mmstat.com
+umeng.com
+
+# === 字节跳动 / 抖音 / 今日头条 ===
+douyin.com
+bytedance.com
+ixigua.com
+toutiao.com
+snssdk.com
+amemv.com
+pstatp.com
+byteimg.com
+zjurl.cn
+byted.org
+douyinpic.com
+douyinstatic.com
+toutiaoimg.com
+
+# === 哔哩哔哩 ===
+bilibili.com
+bilivideo.com
+hdslb.com
+biliapi.net
+biliapi.com
+bilivideo.cn
+
+# === 网易 ===
+163.com
+126.com
+yeah.net
+netease.com
+youdao.com
+lofter.com
+
+# === 搜狐 ===
+sohu.com
+sohucs.com
+itc.cn
+
+# === 新浪 / 微博 ===
+sina.com.cn
+sinaimg.cn
+weibo.com
+weibo.cn
+sina.cn
+miaopai.com
+
+# === 京东 ===
+jd.com
+jdcloud.com
+360buyimg.com
+
+# === 拼多多 ===
+pinduoduo.com
+yangkeduo.com
+
+# === 小红书 ===
+xiaohongshu.com
+xhslink.com
+
+# === 爱奇艺 ===
+iqiyi.com
+iqiyipic.com
+
+# === 优酷 ===
+youku.com
+alikunlun.com
+
+# === 芒果TV ===
+mgtv.com
+hunantv.com
+
+# === 知乎 ===
+zhihu.com
+zhimg.com
+
+# === 美团 ===
+meituan.com
+sankuai.com
+
+# === 滴滴 ===
+didiglobal.com
+didichuxing.com
+
+# === 三大运营商 ===
+chinamobile.com
+chinaunicom.com
+chinaunicom.cn
+chinatelecom.com.cn
+chinatelecom.cn
+
+# === 政府 / 高校 ===
+gov.cn
+edu.cn
+ac.cn
+
+# === 主要银行 ===
+icbc.com.cn
+ccb.com
+abchina.com
+bankofchina.com
+cmbchina.com
+cmbc.com.cn
+boc.cn
+psbc.com
+
+# === 手机品牌 ===
+huawei.com
+xiaomi.com
+mi.com
+vivo.com
+oppo.com
+honor.com
+meizu.com
+oneplus.com
+
+# === CDN / 云存储基础设施 ===
+qiniu.com
+qiniudn.com
+qnssl.com
+upyun.com
+dnspod.cn
+dnspod.com
+chinacache.com
+aicdn.com
+21vianet.com
+
+# === 电商 ===
+suning.com
+gome.com.cn
+dangdang.com
+vip.com
+
+# === 新闻 / 媒体 ===
+people.com.cn
+xinhuanet.com
+cctv.com
+cctv.cn
+
+# === 游戏 ===
+mihoyo.com
+hoyoverse.com
+4399.com
+
+# === 安全软件 ===
+360.cn
+360safe.com
+
+# === 云盘 / 存储 ===
+115.com
+weiyun.com
+yunpan.cn
